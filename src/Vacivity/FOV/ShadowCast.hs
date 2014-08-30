@@ -5,7 +5,6 @@ import Data.Foldable
 import qualified Data.Set as Set
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Common
-import Debug.Trace
 
 type Mask = A2D.Array2d Bool
 
@@ -31,39 +30,37 @@ calculate msk@(A2D.Array2d cols rows _) (sx, sy)  r =
                       ) (Set.singleton (sx, sy)) dirs
 
  where castLight :: (Int,Int) -> Int -> Double -> Double -> Int -> Int -> Int -> Int -> Mask -> Set.Set XY -> Set.Set XY
-       castLight size@(width,height) row start end xx xy yx yy mask lit =
+       castLight size@(width,height) row start end xx xy yx yy mask l =
            if start < end
-           then lit
-           else loop1 row start 0.0 False lit
-        where loop1 :: Int -> Double -> Double -> Bool -> Set.Set XY -> Set.Set XY
-              loop1 distance start newStart blocked lit =
+           then l
+           else loop1 row start 0.0 False l
+        where loop1 distance s ns blocked lit =
                   if distance > r || blocked
                   then lit
-                  else let (start', newStart', blocked', lit') = loop2 (-distance) (-distance) start newStart blocked lit in
-                       loop1 (distance + 1) start' newStart' blocked' lit'
-               where loop2 :: Int -> Int -> Double -> Double -> Bool -> Set.Set XY -> (Double, Double, Bool, Set.Set XY)
-                     loop2 dy dx start newStart blocked lit =
-                         if dx > 0
-                         then (start, newStart, blocked, lit)
-                         else let pos = (sx + dx * xx + dy * xy
-                                        ,sy + dx * yx + dy * yy) in
-                              let leftSlope = (fromIntegral dx - 0.5) / (fromIntegral dy + 0.5) in
-                              let rightSlope = (fromIntegral dx + 0.5) / (fromIntegral dy - 0.5) in
-                              if not (inRange pos (0, 0, width, height)) || start < rightSlope
-                              then loop2 dy (dx + 1) start newStart blocked lit
-                              else if end > leftSlope
-                              then (start, newStart, blocked, lit)
-                              else let lit' = if inRadius (dx, dy) r
-                                              then Set.insert pos lit
-                                              else lit
-                                   in
-                                   if blocked
-                                   then if isSolid mask pos
-                                        then loop2 dy (dx + 1) start rightSlope blocked lit'
-                                        else loop2 dy (dx + 1) newStart newStart False lit'
-                                   else if isSolid mask pos && distance < r
-                                        then let lit'' = castLight size (distance + 1) start leftSlope xx xy yx yy mask lit' in
-                                             loop2 dy (dx + 1) start rightSlope True lit''
-                                        else loop2 dy (dx + 1) start newStart blocked lit'
+                  else let (s', ns', blocked', lit') = loop2 distance (-distance) (-distance) s ns blocked lit in
+                       loop1 (distance + 1) s' ns' blocked' lit'
+              loop2 d dy dx s ns blocked lit =
+                  if dx > 0
+                  then (s, ns, blocked, lit)
+                  else let pos = (sx + dx * xx + dy * xy
+                                 ,sy + dx * yx + dy * yy) in
+                       let leftSlope = (fromIntegral dx - 0.5) / (fromIntegral dy + 0.5) in
+                       let rightSlope = (fromIntegral dx + 0.5) / (fromIntegral dy - 0.5) in
+                       if not (inRange pos (0, 0, width, height)) || s < rightSlope
+                       then loop2 d dy (dx + 1) s ns blocked lit
+                       else if end > leftSlope
+                       then (s, ns, blocked, lit)
+                       else let lit' = if inRadius (dx, dy) r
+                                       then Set.insert pos lit
+                                       else lit
+                            in
+                            if blocked
+                            then if isSolid mask pos
+                            then loop2 d dy (dx + 1) s rightSlope blocked lit'
+                                   else loop2 d dy (dx + 1) ns ns False lit'
+                              else if isSolid mask pos && d < r
+                                   then let lit'' = castLight size (d + 1) s leftSlope xx xy yx yy mask lit' in
+                                        loop2 d dy (dx + 1) s rightSlope True lit''
+                                   else loop2 d dy (dx + 1) s ns blocked lit'
 
 

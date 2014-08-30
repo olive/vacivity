@@ -71,7 +71,7 @@ instance Drawable GameState where
         let ter' = tf <$> ter
         let tr = empty
         let mask' = trace (getPos pl) 9 mask
-        R.render ren $ render pl $ (A2D.foldl (\tr (pt,t) -> if any id $ A2D.get mask' pt then tr <+ (pt, t) else tr) tr ter')
+        R.render ren $ render pl $ (A2D.foldl (\tr' (pt,t) -> if any id $ A2D.get mask' pt then tr' <+ (pt, t) else tr') tr ter')
 
 enterLoop :: WindowSettings => IO ()
 enterLoop = do
