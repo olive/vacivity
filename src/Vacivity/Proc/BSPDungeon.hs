@@ -1,13 +1,19 @@
-module Vacivity.Proc.Dungeon where
+module Vacivity.Proc.BSPDungeon where
 
+import Prelude hiding (any, concat, foldl)
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Random hiding (split)
-import Data.List
+import Data.List hiding (concat, foldl, any)
+import Data.Maybe
+import Data.Foldable
 
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Utils
+import Antiqua.Data.Coordinate
 
+
+import Vacivity.Data.Tile
 
 data NonEmpty
 
@@ -35,16 +41,16 @@ split (Node (x, y, w, h)) = do
                                               , Node (x + w1 + 1, y, w2, h)
                                               ]
         go Horizontal = let h1 = floor $ fromIntegral h * p in
-                        let h2 = (subtract 1) $ floor $ fromIntegral h * (1 - p) in
+                        let h2 = ((subtract 1) . floor) $ fromIntegral h * (1 - p) in
                         return $ Tree Horizontal [ Node (x,      y, w, h1)
                                                  , Node (x, y + h1 + 1, w, h2)
                                                  ]
     go o
 
 
-create :: RandomGen g => Rect -> Int -> Rand g (A2D.Array2d Bool)
+create :: RandomGen g => Rect -> Int -> Rand g (A2D.Array2d TileType)
 create r i = do
-    tree <- foldM (\n _ -> split n) (Node r) [0..(i-1)]
+    tree <- foldM (const . split) (Node r) [0..(i-1)]
     shrunk <- shrink tree
     let ct = connectAll shrunk
     return $ toCollisions r shrunk ct
@@ -91,10 +97,8 @@ connect o (Line p1 p2) (Line q1 q2) =
     let m2@(m2x, m2y) = midPoint q1 q2 in
     let (m3x, m3y) = midPoint m1 m2 in
     case o of
-        Horizontal ->
-            [Line (m3x, m1y) (m3x, m2y)]
-        Vertical ->
-            [Line (m1x, m3y) (m2x, m3y)]
+        Horizontal -> [Line (m3x, m1y) (m3x, m2y)]
+        Vertical -> [Line (m1x, m3y) (m2x, m3y)]
 
 center :: Rect -> (Int,Int)
 center (x, y, w, h) = (x + (w `quot` 2), y + (h `quot` 2))
@@ -140,18 +144,28 @@ assembleRects t =
 
 rectToPts :: Rect -> [(Int,Int)]
 rectToPts (x, y, w, h) =
-    [ (i, j) | i <- [x..(x + w - 1)], j <- [y.. (y + h - 1)] ]
+    [ (i, j) | i <- [x..(x + w - 1)], j <- [y..(y + h - 1)] ]
 
 lineToPts :: Line -> [(Int,Int)]
 lineToPts (Line (x1, y1) (x2, y2)) =
     rectToPts (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
 
-toCollisions :: Rect -> Tree -> [Line] -> A2D.Array2d Bool
+toCollisions :: Rect -> Tree -> [Line] -> A2D.Array2d TileType
 toCollisions (x, y, w, h) t ls =
     let rects = assembleRects t in
     let pts = concat $ (lineToPts <$> ls) ++ (rectToPts <$> rects) in
     let base = A2D.tabulate (w - x) (h - y) (const True) in
     let result = foldl (\arr pt -> A2D.put arr pt False) base pts in
-    result
+    let fs = [ (i, j) | i <- [-1..1], j <- [-1..1], i /= 0 || j /= 0] in
+    let ns p = catMaybes $ (A2D.get result . (p |+|)) <$> fs in
+    let f p b = let this = b in
+                let hasSolid = any not (ns p) in
+                if | not this -> Free
+                   | hasSolid -> Wall
+                   | otherwise -> Solid
+    in
+    f A2D.<$*> result
+
+
 
 
