@@ -37,12 +37,12 @@ split (Node (x, y, w, h)) = do
             else select Vertical Horizontal b
     let go Vertical = let w1 = floor $ fromIntegral w * p in
                       let w2 =  (subtract 1) $ floor $ fromIntegral w * (1 - p) in
-                      return $ Tree Vertical [ Node (x,      y, w1, h)
-                                              , Node (x + w1 + 1, y, w2, h)
-                                              ]
+                      return $ Tree Vertical [ Node (         x, y, w1, h)
+                                             , Node (x + w1 + 1, y, w2, h)
+                                             ]
         go Horizontal = let h1 = floor $ fromIntegral h * p in
                         let h2 = ((subtract 1) . floor) $ fromIntegral h * (1 - p) in
-                        return $ Tree Horizontal [ Node (x,      y, w, h1)
+                        return $ Tree Horizontal [ Node (x,          y, w, h1)
                                                  , Node (x, y + h1 + 1, w, h2)
                                                  ]
     go o
@@ -64,12 +64,8 @@ shrinkRect (x, y, w, h) = do
     return $ (x + sx1, y + sy1, w - (sx1 + sx2), h - (sy1 + sy2))
 
 shrink :: RandomGen g => Tree -> Rand g Tree
-shrink (Node n) = do
-    n' <- shrinkRect n
-    return $ Node n'
-shrink (Tree o ts) = do
-    ts' <- sequence $ shrink <$> ts
-    return $ Tree o ts'
+shrink (Node n) = Node <$> shrinkRect n
+shrink (Tree o ts) = Tree o <$> (sequence $ shrink <$> ts)
 
 
 top :: Rect -> Line
@@ -155,12 +151,11 @@ toCollisions (x, y, w, h) t ls =
     let rects = assembleRects t in
     let pts = concat $ (lineToPts <$> ls) ++ (rectToPts <$> rects) in
     let base = A2D.tabulate (w - x) (h - y) (const True) in
-    let result = foldl (\arr pt -> A2D.put arr pt False) base pts in
+    let result = foldl (A2D.putv False) base pts in
     let fs = [ (i, j) | i <- [-1..1], j <- [-1..1], i /= 0 || j /= 0] in
     let ns p = catMaybes $ (A2D.get result . (p |+|)) <$> fs in
-    let f p b = let this = b in
-                let hasSolid = any not (ns p) in
-                if | not this -> Free
+    let f p b = let hasSolid = any not (ns p) in
+                if | not b -> Free
                    | hasSolid -> Wall
                    | otherwise -> Solid
     in
