@@ -7,6 +7,7 @@ import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Common
 
 import Vacivity.FOV.ShadowCast
+import Vacivity.FOV.Common
 import Vacivity.Data.Tile
 
 
@@ -24,8 +25,8 @@ mkDungeon mkRand = do
     return $ Dungeon tiles mask
 
 --try tracing all four corners of the tile
-trace :: XY -> Int -> Mask -> Mask
-trace pos radius mask =
-    let lit = Set.toList $ calculate mask pos radius in
+fov :: XY -> Int -> Mask -> Mask
+fov pos radius mask =
+    let lit = Set.toList $ calcFOV mask pos radius in
     let dark = const False <$> mask in
     foldl (A2D.putv True) dark lit

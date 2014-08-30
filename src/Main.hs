@@ -70,7 +70,7 @@ instance Drawable GameState where
             tf (DTile _ Solid) = Tile C'Space black white
         let ter' = tf <$> ter
         let tr = empty
-        let mask' = trace (getPos pl) 9 mask
+        let mask' = fov (getPos pl) 9 mask
         R.render ren $ render pl $ (A2D.foldl (\tr' (pt,t) -> if any id $ A2D.get mask' pt then tr' <+ (pt, t) else tr') tr ter')
 
 enterLoop :: WindowSettings => IO ()
