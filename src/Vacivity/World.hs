@@ -34,7 +34,6 @@ mkDungeon mkRand = do
 --try tracing all four corners of the tile
 fov :: XY -> Int -> Mask -> Mask
 fov pos radius mask =
-    let f = if True then calcFOV else calcFOVImp in
-    let lit = f mask pos radius in
+    let lit = calcFOV mask pos radius in
     let dark = const False <$> mask in
     foldl (A2D.putv True) dark lit

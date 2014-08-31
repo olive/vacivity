@@ -1,13 +1,10 @@
 module Vacivity.FOV.ShadowCast(
-    calcFOVImp,
     calcFOV
 ) where
 
-import Prelude hiding (any, all, foldl)
+import Prelude hiding (any, all, foldl, concat)
+import Control.Applicative ((<$>))
 import Data.Foldable hiding (toList)
-import Control.Monad.ST
-import Control.Monad
-import Data.STRef
 import qualified Data.Set as Set
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Common
@@ -35,61 +32,6 @@ data ShadowArgs = ShadowArgs { s :: Double,
                                lit :: Col XY
                              }
 
-calcFOVImp :: Mask -> XY -> Int -> [XY]
-calcFOVImp mask@(A2D.Array2d cols rows _) (sx, sy) r = Set.toList $ runST $ do
-    let (w,h) = (cols, rows)
-    lit <- newSTRef (Set.singleton (sx, sy))
-    let castLight row start end xx xy yx yy = do
-         b <- newSTRef False
-         s <- newSTRef start
-         ns <- newSTRef end
-         forM [row..r] $ \d -> do
-             blck <- readSTRef b
-             let dy = if blck then 1 else -d
-             doBreak <- newSTRef False
-             forM [-d..0] $ \dx -> do
-                 br <- readSTRef doBreak
-                 if br
-                 then return ()
-                 else do let f sigx sigy =   (fromIntegral dx + sigx*0.5)
-                                           / (fromIntegral dy + sigy*0.5)
-                         let pos = (sx + dx * xx + dy * xy
-                                   ,sy + dx * yx + dy * yy)
-                         let ls = f (-1) 1
-                         let rs = f 1 (-1)
-                         sv <- readSTRef s
-                         if (not . inRange pos) (0, 0, w, h)  || sv < rs
-                         then return ()
-                         else if end > ls
-                         then do writeSTRef doBreak True
-                                 return ()
-                         else do sv <- readSTRef s
-                                 if (not . inRadius pos) r || sv < rs
-                                 then modifySTRef' lit (Set.insert pos)
-                                 else return ()
-                                 bv <- readSTRef b
-                                 if bv
-                                 then if isSolid mask pos
-                                      then do writeSTRef ns rs
-                                              return ()
-                                      else do writeSTRef b False
-                                              nsv <- readSTRef ns
-                                              writeSTRef s nsv
-                                              return ()
-                                 else if isSolid mask pos && d < r
-                                      then do writeSTRef b True
-                                              sv <- readSTRef s
-                                              castLight (d+1) sv ls xx xy yx yy
-                                              writeSTRef ns rs
-                                              return ()
-                                      else return ()
-    let dirs = [ (-1,1), (1,-1), (-1,-1), (1,1) ]
-    let cast = castLight 1 1.0 0.0
-    forM dirs $ \(i,j) -> do
-        cast i 0 0 j
-        cast 0 i j 0
-    readSTRef lit
-
 type Col a = Set.Set a
 
 toList :: Col a -> [a]
@@ -101,18 +43,22 @@ append x = Set.insert x
 single :: a -> Col a
 single = Set.singleton
 
+empty :: Col a
+empty = Set.empty
+
 calcFOV :: Mask -> XY -> Int -> [XY]
-calcFOV msk@(A2D.Array2d cols rows _) (sx, sy) r =
-    let size = (cols, rows) in
+calcFOV msk@(A2D.Array2d w h _) (sx, sy) r =
     let dirs = [ (-1,1), (1,-1), (-1,-1), (1,1) ] in
-    let cast = castLight size 1 1.0 0.0 msk in
+    let cast = castLight 1 1.0 0.0 msk in
     let seed = single (sx, sy) in
-    toList $ foldl (\l (i, j) -> (cast i 0 0 j . cast 0 i j 0) l) seed dirs
- where castLight size@(w,h) row start end mask xx xy yx yy l =
+    let calls = concat $ (\(i, j) -> [cast i 0 0 j, cast 0 i j 0]) <$> dirs in
+    let lsts = ($ empty) <$> calls in
+    toList $ Set.unions (seed:lsts)
+ where castLight row start end mask xx xy yx yy l =
            if start < end
            then l
            else lit $ outer row (ShadowArgs start 0.0 False l)
-        where recast d st ed lit' = castLight size d st ed mask xx xy yx yy lit'
+        where recast d st ed lit' = castLight d st ed mask xx xy yx yy lit'
               outer d args =
                   if d > r || b args
                   then args

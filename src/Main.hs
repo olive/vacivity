@@ -28,8 +28,8 @@ import Vacivity.Data.Tile
 import Vacivity.World
 
 instance WindowSettings where
-    width = (64+48)*16
-    height = 64*16
+    width = 48*16
+    height = 48*16
     title = "Vacivity"
 
 data Player = Player XY
@@ -90,7 +90,7 @@ enterLoop = do
     tex <- loadTexture "16x16.png"
     let assets = undefined :: Assets
     let rng = mkStdGen 2
-    let ter = create (0,0,64+48,64) 4
+    let ter = create (0,0,width `div` 16, height `div` 16) 4
     let (spawn, dun) = evalRand (mkDungeon ter) rng
     let state = GameState (Player spawn) dun
 
