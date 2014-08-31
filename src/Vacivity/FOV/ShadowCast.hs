@@ -47,20 +47,20 @@ empty :: Col a
 empty = Set.empty
 
 calcFOV :: Mask -> XY -> Int -> [XY]
-calcFOV msk@(A2D.Array2d w h _) (sx, sy) r =
+calcFOV mask@(A2D.Array2d w h _) (sx, sy) r =
     let dirs = [ (-1,1), (1,-1), (-1,-1), (1,1) ] in
-    let cast = castLight 1 1.0 0.0 msk in
+    let cast = castLight 1 1.0 0.0 in
     let seed = single (sx, sy) in
     let calls = concat $ (\(i, j) -> [cast i 0 0 j, cast 0 i j 0]) <$> dirs in
     let lsts = ($ empty) <$> calls in
     toList $ Set.unions (seed:lsts)
- where castLight :: Int -> Double -> Double -> Mask -> Int -> Int -> Int -> Int -> Col XY -> Col XY
-       castLight row start end mask xx xy yx yy l =
+ where castLight :: Int -> Double -> Double -> Int -> Int -> Int -> Int -> Col XY -> Col XY
+       castLight row start end xx xy yx yy l =
            if start < end
            then l
            else lit $ outer row (ShadowArgs start 0.0 False l)
         where recast :: Int -> Double -> Double -> Col XY -> Col XY
-              recast d st ed lit' = castLight d st ed mask xx xy yx yy lit'
+              recast d st ed lit' = castLight d st ed xx xy yx yy lit'
               outer :: Int -> ShadowArgs -> ShadowArgs
               outer d args =
                   if d > r || b args
