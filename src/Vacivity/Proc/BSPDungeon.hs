@@ -6,7 +6,7 @@ import Control.Monad.Random hiding (split)
 import Data.List hiding (concat, foldl, any)
 import Data.Maybe
 import Data.Foldable
-
+import qualified Data.Set as Set
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Utils
 import Antiqua.Data.Coordinate
@@ -56,7 +56,7 @@ needSplit (Node (_, _, w, h)) =
     let ratio :: Double = fromIntegral w / fromIntegral h in
     (w > 10 && h > 10) && (ratio > 2 || ratio < 0.5)
 
-create :: RandomGen g => Rect -> Int -> Rand g (A2D.Array2d TileType)
+create :: RandomGen g => Rect -> Int -> Rand g (Set.Set XY, A2D.Array2d TileType)
 create r@(x, y, w, h) n = do
     let sr = (x+2, y+2, w-2, h-2)
     tree <- doSplit n (Node sr)
@@ -122,8 +122,18 @@ connect o (Line p1 p2) (Line q1 q2) =
     let m2@(m2x, m2y) = midPoint q1 q2 in
     let (m3x, m3y) = midPoint m1 m2 in
     case o of
-        Horizontal -> [Line (m3x, m1y) (m3x, m2y)]
-        Vertical -> [Line (m1x, m3y) (m2x, m3y)]
+        Horizontal -> if abs (m1y - m2y) <= 2
+                      then [ Line (m3x,m1y) (m3x,m2y) ]
+                      else [ Line (m1x,m1y) (m1x,m3y)
+                           , Line (m1x,m3y) (m2x,m3y)
+                           , Line (m2x,m3y) (m2x,m2y)
+                           ]
+        Vertical -> if abs (m1x - m2x) <= 2
+                    then [ Line (m1x,m3y) (m2x,m3y) ]
+                    else [ Line (m1x,m1y) (m3x,m1y)
+                         , Line (m3x,m1y) (m3x,m2y)
+                         , Line (m3x,m2y) (m2x,m2y)
+                         ]
 
 center :: Rect -> (Int,Int)
 center (x, y, w, h) = (x + (w `quot` 2), y + (h `quot` 2))
@@ -174,14 +184,16 @@ rectToPts (x, y, w, h) =
 
 lineToPts :: Line -> [(Int,Int)]
 lineToPts (Line (x1, y1) (x2, y2)) =
-    rectToPts (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
+    let x0 = min x1 x2 in
+    let y0 = min y1 y2 in
+    rectToPts (x0, y0, abs (x1 - x2) + 1, abs (y1 - y2) + 1)
 
 contains :: Rect -> XY -> Bool
 contains (x, y, w, h) (p, q)
     | p >= x && p < x + w && q >= y && q < y + h = True
     | otherwise = False
 
-toCollisions :: Rect -> Tree -> [Line] -> A2D.Array2d TileType
+toCollisions :: Rect -> Tree -> [Line] -> (Set.Set XY, A2D.Array2d TileType)
 toCollisions r@(x, y, w, h) t ls =
     let rects = assembleRects t in
     let pts = concat $ (lineToPts <$> ls) ++ (rectToPts <$> rects) in
@@ -189,13 +201,13 @@ toCollisions r@(x, y, w, h) t ls =
     let result = foldl (A2D.putv False) base pts in
     let fs = [ (i, j) | i <- [-1..1], j <- [-1..1], i /= 0 || j /= 0 ] in
     let ns p = catMaybes $ (A2D.get result . (p |+|)) <$> fs in
-    let f p b = let hasSolid = any id (ns p) in
-                if | (not . contains r) p -> Wall
+    let f p b = let hasSolid = any not (ns p) in
+                if | (not . contains r) p -> Solid
                    | not b -> Free
                    | hasSolid -> Wall
                    | otherwise -> Solid
     in
-    f A2D.<$*> result
+    (Set.fromList pts , f A2D.<$*> result)
 
 
 

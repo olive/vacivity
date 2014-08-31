@@ -5,28 +5,36 @@ import Control.Monad.Random
 import qualified Data.Set as Set
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Common
+import Antiqua.Data.Flood
 
 import Vacivity.FOV.ShadowCast
 import Vacivity.FOV.Common
 import Vacivity.Data.Tile
 
-
-
+import Debug.Trace
 
 data Dungeon = Dungeon (A2D.Array2d DTile) Mask
 
 -- True means passable
 
-mkDungeon :: RandomGen g => Rand g (A2D.Array2d TileType) -> Rand g Dungeon
+mkDungeon :: RandomGen g => Rand g (Set.Set XY, A2D.Array2d TileType) -> Rand g (XY, Dungeon)
 mkDungeon mkRand = do
-    ttypes <- mkRand
-    let tiles = (DTile []) <$> ttypes
-    let mask = ((==) Free) <$> ttypes
-    return $ Dungeon tiles mask
+    (pts, ttypes) <- mkRand
+    let (pt1, pt2) = case Set.minView pts of
+                              Just (x, _) -> let spawn = traceShow x $ floodFind ttypes x in
+                                             let stairs = floodFind ttypes spawn in
+                                             (spawn, stairs)
+                              Nothing -> error "empty dungeon"
+    let withSpawn = A2D.putv Spawn ttypes pt1
+    let withStair = A2D.putv Stair withSpawn pt2
+    let tiles = (DTile []) <$> withStair
+    let mask = ((==) Free) <$> withStair
+    return $ (pt1, Dungeon tiles mask)
 
 --try tracing all four corners of the tile
 fov :: XY -> Int -> Mask -> Mask
 fov pos radius mask =
-    let lit = Set.toList $ calcFOV mask pos radius in
+    let f = if True then calcFOV else calcFOVImp in
+    let lit = f mask pos radius in
     let dark = const False <$> mask in
     foldl (A2D.putv True) dark lit

@@ -54,10 +54,11 @@ updatePlayer dd (Dungeon arr _) (Player pos) =
 
 instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) a where
     runFrame (GameState pl tr) (ctrl,_,_) rng =
-        let u = (select 0 (-1) . C.justPressed . from ctrl) (Get :: Index 'CK'Up) in
-        let d = (select u   1  . C.justPressed . from ctrl) (Get :: Index 'CK'Down) in
-        let l = (select 0 (-1) . C.justPressed . from ctrl) (Get :: Index 'CK'Left) in
-        let r = (select l   1  . C.justPressed . from ctrl) (Get :: Index 'CK'Right) in
+        let z = C.zips 3 3 in
+        let u = (select 0 (-1) . z . from ctrl) (Get :: Index 'CK'Up) in
+        let d = (select u   1  . z . from ctrl) (Get :: Index 'CK'Down) in
+        let l = (select 0 (-1) . z . from ctrl) (Get :: Index 'CK'Left) in
+        let r = (select l   1  . z . from ctrl) (Get :: Index 'CK'Right) in
         let pl' = updatePlayer (r, d) tr pl in
         (GameState pl' tr, rng)
 
@@ -68,12 +69,14 @@ instance Drawable GameState where
         let tf (DTile _ Free)  = Tile (:.) black white
             tf (DTile _ Wall)  = Tile (:#) black white
             tf (DTile _ Solid) = Tile C'Space black white
+            tf (DTile _ Stair) = Tile C'X black red
+            tf (DTile _ Spawn) = Tile C'S black yellow
         let ter' = tf <$> ter
         let tr = empty
         let mask' = fov (getPos pl) 9 mask
-        let light tr' (pt, t) = if True || (any id $ A2D.get mask' pt)
+        let light tr' (pt, t) = if (any id $ A2D.get mask' pt)
                                 then tr' <+ (pt, t)
-                                else tr'
+                                else tr' <+ (pt, mapFg (dim 2) t)
         R.render ren . render pl $ (A2D.foldl light tr ter')
 
 enterLoop :: WindowSettings => IO ()
@@ -87,9 +90,9 @@ enterLoop = do
     tex <- loadTexture "16x16.png"
     let assets = undefined :: Assets
     let rng = mkStdGen 2
-    let ter = create (0,0,64 + 48,64) 4
-    let dun = evalRand (mkDungeon ter) rng
-    let state = GameState (Player (10,10)) dun
+    let ter = create (0,0,64+48,64) 4
+    let (spawn, dun) = evalRand (mkDungeon ter) rng
+    let state = GameState (Player spawn) dun
 
     gs <- mkUpdater state (ctrl, assets, win) rng
     loop ctrl win gs tex rng
