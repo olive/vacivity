@@ -71,7 +71,7 @@ instance Drawable GameState where
         let ter' = tf <$> ter
         let tr = empty
         let mask' = fov (getPos pl) 9 mask
-        let light tr' (pt, t) = if any id $ A2D.get mask' pt
+        let light tr' (pt, t) = if True || (any id $ A2D.get mask' pt)
                                 then tr' <+ (pt, t)
                                 else tr'
         R.render ren . render pl $ (A2D.foldl light tr ter')

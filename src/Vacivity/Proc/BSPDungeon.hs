@@ -2,7 +2,6 @@ module Vacivity.Proc.BSPDungeon where
 
 import Prelude hiding (any, concat, foldl)
 import Control.Applicative
-import Control.Monad
 import Control.Monad.Random hiding (split)
 import Data.List hiding (concat, foldl, any)
 import Data.Maybe
@@ -11,62 +10,92 @@ import Data.Foldable
 import qualified Antiqua.Data.Array2d as A2D
 import Antiqua.Utils
 import Antiqua.Data.Coordinate
-
-
+import Antiqua.Common
 import Vacivity.Data.Tile
 
 data NonEmpty
 
 type Rect = (Int,Int,Int,Int)
 data Tree = Node Rect | Tree Orientation [Tree] deriving Show
+
 data Orientation = Horizontal | Vertical deriving Show
 data Line = Line (Int,Int) (Int,Int) deriving Show
 
 split :: RandomGen g => Tree -> Rand g Tree
-split (Tree o ts) = do
-    ts' <- sequence $ split <$> ts
-    return $ Tree o ts'
-split (Node (x, y, w, h)) = do
+split (Tree o ts) = Tree o <$> (sequence $ split <$> ts)
+split n@(Node (x, y, w, h)) = do
     b :: Bool <- getRandom
-    p :: Double <- getRandomR (0.25, 0.75)
+    p :: Double <- getRandomR (0.33, 0.66)
     let ratio :: Double = fromIntegral w / fromIntegral h
-    let o = if (ratio > 3)
+    let o = if (ratio > 2)
             then Vertical
-            else if (ratio < 0.33)
+            else if (ratio < 0.5)
             then Horizontal
             else select Vertical Horizontal b
     let go Vertical = let w1 = floor $ fromIntegral w * p in
                       let w2 =  (subtract 1) $ floor $ fromIntegral w * (1 - p) in
-                      return $ Tree Vertical [ Node (         x, y, w1, h)
-                                             , Node (x + w1 + 1, y, w2, h)
-                                             ]
+                      if w1 < 3 || w2 < 3
+                      then return n
+                      else return $ Tree Vertical [ Node (         x, y, w1, h)
+                                                  , Node (x + w1 + 1, y, w2, h)
+                                                  ]
         go Horizontal = let h1 = floor $ fromIntegral h * p in
                         let h2 = ((subtract 1) . floor) $ fromIntegral h * (1 - p) in
-                        return $ Tree Horizontal [ Node (x,          y, w, h1)
-                                                 , Node (x, y + h1 + 1, w, h2)
-                                                 ]
-    go o
+                        if h1 < 3 || h2 < 3
+                        then return n
+                        else return $ Tree Horizontal [ Node (x,          y, w, h1)
+                                                      , Node (x, y + h1 + 1, w, h2)
+                                                      ]
+    if w < 10 || h < 10
+    then return n
+    else go o
 
+needSplit :: Tree -> Bool
+needSplit (Tree _ ts) = any id (needSplit <$> ts)
+needSplit (Node (_, _, w, h)) =
+    let ratio :: Double = fromIntegral w / fromIntegral h in
+    (w > 10 && h > 10) && (ratio > 2 || ratio < 0.5)
 
 create :: RandomGen g => Rect -> Int -> Rand g (A2D.Array2d TileType)
-create r i = do
-    tree <- foldM (const . split) (Node r) [0..(i-1)]
+create r@(x, y, w, h) n = do
+    let sr = (x+2, y+2, w-2, h-2)
+    tree <- doSplit n (Node sr)
     shrunk <- shrink tree
     let ct = connectAll shrunk
     return $ toCollisions r shrunk ct
+    where doSplit :: RandomGen g => Int -> Tree -> Rand g Tree
+          doSplit i t = do
+              if i < 0 && (not . needSplit) t
+              then return t
+              else do t' <- split t
+                      doSplit (i - 1) t'
+
+getRandomTo :: RandomGen g => Int -> Rand g Int
+getRandomTo i = do
+    if i <= 0
+    then return 0
+    else getRandomR (0, i)
+
+splitNum :: RandomGen g => Int -> Rand g (Int,Int)
+splitNum i = do
+    first <- getRandomTo i
+    return (first, i - first)
 
 shrinkRect :: RandomGen g => Rect -> Rand g Rect
 shrinkRect (x, y, w, h) = do
-    sx1 <- getRandomR (1, (w `quot` 4) - 1)
-    sx2 <- getRandomR (1, (w `quot` 4) - 1)
-    sy1 <- getRandomR (1, (h `quot` 4) - 1)
-    sy2 <- getRandomR (1, (h `quot` 4) - 1)
-    return $ (x + sx1, y + sy1, w - (sx1 + sx2), h - (sy1 + sy2))
+    sx <- getRandomTo (w - 10)
+    sy <- getRandomTo (h - 10)
+    (sx1, sx2) <- splitNum sx
+    (sy1, sy2) <- splitNum sy
+    let result = (x + sx1
+                 ,y + sy1
+                 ,w - (sx1 + sx2)
+                 ,h - (sy1 + sy2))
+    return $ result
 
 shrink :: RandomGen g => Tree -> Rand g Tree
 shrink (Node n) = Node <$> shrinkRect n
 shrink (Tree o ts) = Tree o <$> (sequence $ shrink <$> ts)
-
 
 top :: Rect -> Line
 top (x, y, w, _) = Line (x, y) (x + w, y)
@@ -131,6 +160,7 @@ connectAll t =
               let cs = connectTree o t1 t2 in
               let rs = connectHelper acc <$> ts in
               cs ++ concat rs
+          connectHelper acc _ = acc
 
 assembleRects :: Tree -> [Rect]
 assembleRects t =
@@ -146,16 +176,22 @@ lineToPts :: Line -> [(Int,Int)]
 lineToPts (Line (x1, y1) (x2, y2)) =
     rectToPts (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
 
+contains :: Rect -> XY -> Bool
+contains (x, y, w, h) (p, q)
+    | p >= x && p < x + w && q >= y && q < y + h = True
+    | otherwise = False
+
 toCollisions :: Rect -> Tree -> [Line] -> A2D.Array2d TileType
-toCollisions (x, y, w, h) t ls =
+toCollisions r@(x, y, w, h) t ls =
     let rects = assembleRects t in
     let pts = concat $ (lineToPts <$> ls) ++ (rectToPts <$> rects) in
     let base = A2D.tabulate (w - x) (h - y) (const True) in
     let result = foldl (A2D.putv False) base pts in
-    let fs = [ (i, j) | i <- [-1..1], j <- [-1..1], i /= 0 || j /= 0] in
+    let fs = [ (i, j) | i <- [-1..1], j <- [-1..1], i /= 0 || j /= 0 ] in
     let ns p = catMaybes $ (A2D.get result . (p |+|)) <$> fs in
-    let f p b = let hasSolid = any not (ns p) in
-                if | not b -> Free
+    let f p b = let hasSolid = any id (ns p) in
+                if | (not . contains r) p -> Wall
+                   | not b -> Free
                    | hasSolid -> Wall
                    | otherwise -> Solid
     in
