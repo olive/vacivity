@@ -28,8 +28,8 @@ import Vacivity.Data.Tile
 import Vacivity.World
 
 instance WindowSettings where
-    width = 48*16
-    height = 48*16
+    width = 64*16
+    height = 64*16
     title = "Vacivity"
 
 data Player = Player XY

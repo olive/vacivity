@@ -54,15 +54,19 @@ calcFOV msk@(A2D.Array2d w h _) (sx, sy) r =
     let calls = concat $ (\(i, j) -> [cast i 0 0 j, cast 0 i j 0]) <$> dirs in
     let lsts = ($ empty) <$> calls in
     toList $ Set.unions (seed:lsts)
- where castLight row start end mask xx xy yx yy l =
+ where castLight :: Int -> Double -> Double -> Mask -> Int -> Int -> Int -> Int -> Col XY -> Col XY
+       castLight row start end mask xx xy yx yy l =
            if start < end
            then l
            else lit $ outer row (ShadowArgs start 0.0 False l)
-        where recast d st ed lit' = castLight d st ed mask xx xy yx yy lit'
+        where recast :: Int -> Double -> Double -> Col XY -> Col XY
+              recast d st ed lit' = castLight d st ed mask xx xy yx yy lit'
+              outer :: Int -> ShadowArgs -> ShadowArgs
               outer d args =
                   if d > r || b args
                   then args
                   else (outer (d + 1) . inner d (-d) (-d)) args
+              inner :: Int -> Int -> Int -> ShadowArgs -> ShadowArgs
               inner d dy dx args =
                   let reinner = inner d dy (dx + 1) in
                   if dx > 0
