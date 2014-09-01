@@ -35,5 +35,6 @@ mkDungeon mkRand = do
 fov :: XY -> Int -> Mask -> Mask
 fov pos radius mask =
     let lit = calcFOV mask pos radius in
-    let dark = const False <$> mask in
-    foldl (A2D.putv True) dark lit
+    let thefold = foldl (A2D.putv True) mask lit in
+    thefold
+

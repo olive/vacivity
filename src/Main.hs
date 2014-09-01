@@ -28,7 +28,7 @@ import Vacivity.Data.Tile
 import Vacivity.World
 
 instance WindowSettings where
-    width = 64*16
+    width = (64+48)*16
     height = 64*16
     title = "Vacivity"
 
@@ -43,7 +43,7 @@ class Renderable a where
 instance Renderable Player where
     render pl tr = tr <+ (getPos pl, Tile (:$) black white)
 
-data GameState = GameState Player Dungeon
+data GameState = GameState Player Dungeon R.Tileset
 
 updatePlayer :: (Int,Int) -> Dungeon -> Player -> Player
 updatePlayer dd (Dungeon arr _) (Player pos) =
@@ -53,18 +53,17 @@ updatePlayer dd (Dungeon arr _) (Player pos) =
              else newPos
 
 instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) a where
-    runFrame (GameState pl tr) (ctrl,_,_) rng =
+    runFrame (GameState pl tr ts) (ctrl,_,_) rng =
         let z = C.zips 3 3 in
         let u = (select 0 (-1) . z . from ctrl) (Get :: Index 'CK'Up) in
         let d = (select u   1  . z . from ctrl) (Get :: Index 'CK'Down) in
         let l = (select 0 (-1) . z . from ctrl) (Get :: Index 'CK'Left) in
         let r = (select l   1  . z . from ctrl) (Get :: Index 'CK'Right) in
         let pl' = updatePlayer (r, d) tr pl in
-        (GameState pl' tr, rng)
+        (GameState pl' tr ts, rng)
 
 instance Drawable GameState where
-    draw (GameState pl (Dungeon ter mask)) tex = do
-        let ts = R.Tileset 16 16 16 16
+    draw (GameState pl (Dungeon ter mask) ts) tex = do
         let ren = R.Renderer tex ts
         let tf (DTile _ Free)  = Tile (:.) black white
             tf (DTile _ Wall)  = Tile (:#) black white
@@ -73,11 +72,15 @@ instance Drawable GameState where
             tf (DTile _ Spawn) = Tile C'S black yellow
         let ter' = tf <$> ter
         let tr = empty
-        let mask' = fov (getPos pl) 9 mask
-        let light tr' (pt, t) = if (any id $ A2D.get mask' pt)
-                                then tr' <+ (pt, t)
-                                else tr' <+ (pt, mapFg (dim 2) t)
-        R.render ren . render pl $ (A2D.foldl light tr ter')
+        let mask' = fov (getPos pl) 15 mask
+        let pf a b = a <+ b
+        let d t = mapFg (dim 2) t
+        let getmsk pt = any id $ A2D.get mask' pt
+        let light tr' (pt, t) = if getmsk pt
+                                then pf tr' (pt, t)
+                                else pf tr' (pt, d t)
+        let theFold = (A2D.foldl' light tr ter')
+        R.render ren . render pl $ theFold
 
 enterLoop :: WindowSettings => IO ()
 enterLoop = do
@@ -92,7 +95,8 @@ enterLoop = do
     let rng = mkStdGen 2
     let ter = create (0,0,width `div` 16, height `div` 16) 4
     let (spawn, dun) = evalRand (mkDungeon ter) rng
-    let state = GameState (Player spawn) dun
+    let ts = R.Tileset 16 16 16 16
+    let state = GameState (Player spawn) dun ts
 
     gs <- mkUpdater state (ctrl, assets, win) rng
     loop ctrl win gs tex rng
