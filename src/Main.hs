@@ -81,15 +81,17 @@ instance Drawable GameState where
         --let pf a b = a <+ b
         let d t = mapFg (dim 2) t
         let getmsk pt = any id $ A2D.get mask' pt
-        let light tr (pt, t) = do tr' <- tr
-                                  if getmsk pt
-                                  then undefined -- tr' <+ (pt, t)
-                                  else undefined -- tr' <+ (pt, d t)
+        --let light tr (pt, t) = if getmsk pt
+        --                       then tr <+ (pt, t)
+        --                       else tr <+ (pt, d t)
         let e = empty ((48+64),64) (Tile C'Space black black)
-        let arr = do
-                ee <- e
-                return $ A2D.foldl' light ee ter'
-        let arrp = Array.runSTArray (snd <$> e)
+        let lst = A2D.foldl' (\acc xy -> xy:acc) [] ter'
+        let rec [] e = snd <$> e
+            rec (x:xs) e = do
+              e' <- e
+              e' <+ x
+              rec xs e
+        let arrp = Array.runSTArray (rec lst e)
         --let ass :: [(Int, Tile CP437)]
         --    ass = Array.assocs arrp
         --R.render ren {-$ render pl-} $ Array.assocs arrp
