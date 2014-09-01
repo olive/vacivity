@@ -3,7 +3,12 @@ module Main where
 
 import Prelude hiding (any, all)
 import Control.Applicative((<$>))
-import Control.Monad.Random
+import Control.Monad.Random hiding (fromList)
+import Control.Monad
+import Control.Monad.ST
+import qualified Data.Array.ST as Array
+import qualified Data.Array as Array
+import qualified Data.Array.Unsafe as Array
 import qualified Graphics.UI.GLFW as GLFW
 import Data.Foldable
 
@@ -37,11 +42,11 @@ data Player = Player XY
 getPos :: Player -> XY
 getPos (Player p) = p
 
-class Renderable a where
-    render :: a -> TR XY (Tile CP437) -> TR XY (Tile CP437)
-
-instance Renderable Player where
-    render pl tr = tr <+ (getPos pl, Tile (:$) black white)
+--class Renderable a where
+--    render :: a -> TR XY (Tile CP437) -> ST (TR XY (Tile CP437)) (TR XY (Tile CP437))
+--
+--instance Renderable Player where
+--    render pl tr = tr <+ (getPos pl, Tile (:$) black white)
 
 data GameState = GameState Player Dungeon R.Tileset
 
@@ -62,6 +67,7 @@ instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) a where
         let pl' = updatePlayer (r, d) tr pl in
         (GameState pl' tr ts, rng)
 
+tr = empty ((48+64), 64) (Tile C'Space black black)
 instance Drawable GameState where
     draw (GameState pl (Dungeon ter mask) ts) tex = do
         let ren = R.Renderer tex ts
@@ -71,16 +77,23 @@ instance Drawable GameState where
             tf (DTile _ Stair) = Tile C'X black red
             tf (DTile _ Spawn) = Tile C'S black yellow
         let ter' = tf <$> ter
-        let tr = empty
-        let mask' = fov (getPos pl) 15 mask
-        let pf a b = a <+ b
+        let mask' = fov (getPos pl) 3 mask
+        --let pf a b = a <+ b
         let d t = mapFg (dim 2) t
         let getmsk pt = any id $ A2D.get mask' pt
-        let light tr' (pt, t) = if getmsk pt
-                                then pf tr' (pt, t)
-                                else pf tr' (pt, d t)
-        let theFold = (A2D.foldl' light tr ter')
-        R.render ren . render pl $ theFold
+        let light tr (pt, t) = do tr' <- tr
+                                  if getmsk pt
+                                  then undefined -- tr' <+ (pt, t)
+                                  else undefined -- tr' <+ (pt, d t)
+        let e = empty ((48+64),64) (Tile C'Space black black)
+        let arr = do
+                ee <- e
+                return $ A2D.foldl' light ee ter'
+        let arrp = Array.runSTArray (snd <$> e)
+        --let ass :: [(Int, Tile CP437)]
+        --    ass = Array.assocs arrp
+        --R.render ren {-$ render pl-} $ Array.assocs arrp
+        undefined
 
 enterLoop :: WindowSettings => IO ()
 enterLoop = do
