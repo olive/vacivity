@@ -12,8 +12,6 @@ import Antiqua.Common
 import Vacivity.FOV.Common
 import Vacivity.Utils
 
-import Debug.Trace
-
 inRadius :: XY -> Int -> Bool
 inRadius (x, y) r =
     x*x + y*y <= r*r

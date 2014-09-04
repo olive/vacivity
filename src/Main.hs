@@ -4,11 +4,8 @@ module Main where
 import Prelude hiding (any, all)
 import Control.Applicative((<$>))
 import Control.Monad.Random hiding (fromList)
-import Control.Monad
-import Control.Monad.ST
 import qualified Data.Array.ST as Array
 import qualified Data.Array as Array
-import qualified Data.Array.Unsafe as Array
 import qualified Graphics.UI.GLFW as GLFW
 import Data.Foldable
 
@@ -33,8 +30,8 @@ import Vacivity.Data.Tile
 import Vacivity.World
 
 instance WindowSettings where
-    width = (64+48)*16
-    height = 64*16
+    width = 48*16
+    height = 48*16
     title = "Vacivity"
 
 data Player = Player XY
@@ -42,11 +39,11 @@ data Player = Player XY
 getPos :: Player -> XY
 getPos (Player p) = p
 
---class Renderable a where
---    render :: a -> TR XY (Tile CP437) -> ST (TR XY (Tile CP437)) (TR XY (Tile CP437))
---
---instance Renderable Player where
---    render pl tr = tr <+ (getPos pl, Tile (:$) black white)
+class Renderable a where
+    render :: a -> (XY, (Tile CP437))
+
+instance Renderable Player where
+    render pl = (getPos pl, Tile (:$) black white)
 
 data GameState = GameState Player Dungeon R.Tileset
 
@@ -67,7 +64,7 @@ instance Game GameState (ControlMap C.TriggerAggregate, Assets, Window) a where
         let pl' = updatePlayer (r, d) tr pl in
         (GameState pl' tr ts, rng)
 
-tr = empty ((48+64), 64) (Tile C'Space black black)
+tr = empty (48, 48) (Tile C'Space black black)
 instance Drawable GameState where
     draw (GameState pl (Dungeon ter mask) ts) tex = do
         let ren = R.Renderer tex ts
@@ -77,25 +74,21 @@ instance Drawable GameState where
             tf (DTile _ Stair) = Tile C'X black red
             tf (DTile _ Spawn) = Tile C'S black yellow
         let ter' = tf <$> ter
-        let mask' = fov (getPos pl) 3 mask
-        --let pf a b = a <+ b
+        let mask' = fov (getPos pl) 15 mask
         let d t = mapFg (dim 2) t
         let getmsk pt = any id $ A2D.get mask' pt
-        --let light tr (pt, t) = if getmsk pt
-        --                       then tr <+ (pt, t)
-        --                       else tr <+ (pt, d t)
-        let e = empty ((48+64),64) (Tile C'Space black black)
-        let lst = A2D.foldl' (\acc xy -> xy:acc) [] ter'
+        --let e = empty ((48+64),64) (Tile C'Space black black)
+        let choose (pt, t) = (,) pt $ if getmsk pt
+                                      then t
+                                      else d t
+        let lst = A2D.foldr ((:) . choose) [] ter' ++ [render pl]
         let rec [] e = snd <$> e
             rec (x:xs) e = do
               e' <- e
-              e' <+ x
-              rec xs e
-        let arrp = Array.runSTArray (rec lst e)
-        --let ass :: [(Int, Tile CP437)]
-        --    ass = Array.assocs arrp
-        --R.render ren {-$ render pl-} $ Array.assocs arrp
-        undefined
+              rec xs $ (e' <+ x)
+        let arrp = Array.runSTArray (rec lst tr)
+        let doren z = R.render ren z
+        doren $ Array.assocs arrp
 
 enterLoop :: WindowSettings => IO ()
 enterLoop = do
